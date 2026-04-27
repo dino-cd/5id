@@ -44,6 +44,35 @@
         }
         #replace-box label { font-weight: bold; }
         input[type="text"] { font-family: monospace; font-size: 14px; }
+
+        #grid-modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 100;
+        }
+        #grid-modal-inner {
+            background: #f4f4f4;
+            margin: 20px auto;
+            max-width: 95%;
+            max-height: 92vh;
+            overflow: auto;
+            padding: 15px;
+            border: 1px solid #000;
+        }
+        #grid-modal-inner h3 { margin-top: 0; font-size: 16px; }
+        .modal-controls { margin-bottom: 10px; font-family: monospace; font-size: 13px; }
+        .tool-btn {
+            font-family: monospace;
+            font-size: 13px;
+            padding: 3px 8px;
+            margin: 2px;
+            cursor: pointer;
+        }
+        .tool-btn.active { background: #333; color: #fff; }
+        #grid-canvas { display: block; cursor: cell; image-rendering: pixelated; }
     </style>
 </head>
 <body>
@@ -53,16 +82,15 @@
             <div class="controls">
                 <button onclick="parseText()">process</button>
                 <button onclick="copyResult()">copy</button>
+                <button id="grid-btn" onclick="openGridModal()" style="display:none">grid view</button>
             </div>
             <textarea id="levelInput" placeholder="paste txt here"></textarea>
         </div>
-
         <div class="col">
             <h3>id(s): </h3>
             <div id="id-list">
                 <i>no tiles?</i>
             </div>
-
             <div id="replace-box">
                 <p>id(s) selected: <strong id="sel-id"></strong></p>
                 <label>swap to: </label>
@@ -73,26 +101,44 @@
             </div>
         </div>
     </div>
+    <div id="grid-modal">
+        <div id="grid-modal-inner">
+            <h3>grid view</h3>
+            <div class="modal-controls">
+                <button class="tool-btn active" id="btn-bucket" onclick="setTool('bucket')">bucket</button>
+                <button class="tool-btn" id="btn-pencil" onclick="setTool('pencil')">pencil</button>
+                &nbsp;|&nbsp;
+                paint value: <input type="text" id="paint-val" maxlength="2" size="4" value="..">
+                &nbsp;&nbsp;
+                <button onclick="applyGridChanges()">apply + close</button>
+                <button onclick="closeGridModal()">close</button>
+            </div>
+            <canvas id="grid-canvas"></canvas>
+        </div>
+    </div>
     <script>
         var parsedData = null;
         var selectedId = null;
+        var currentTool = 'bucket';
+        var colorMap = {};
+        var CELL = 22;
+        var gridCanvas, ctx;
+        var isPainting = false;
+        var PALETTE = [
+            '#c0392b','#2980b9','#27ae60','#d35400','#8e44ad',
+            '#16a085','#f39c12','#2c3e50','#e74c3c','#1abc9c',
+            '#e67e22','#3498db','#2ecc71','#9b59b6','#f1c40f'
+        ];
         function parseText() {
             var rawText = document.getElementById("levelInput").value;
-            if (!rawText) {
-                alert("empty");
-                return;
-            }
+            if (!rawText) { alert("empty"); return; }
             var lines = rawText.split(/\r?\n/);
-            if (lines.length < 3) {
-                alert("to short");
-                return;
-            }
+            if (lines.length < 3) { alert("to short"); return; }
             var header = lines[0];
             var metaLine = lines[1];
             var metaParts = metaLine.split(',');
             var width = parseInt(metaParts[0], 10);
             var height = parseInt(metaParts[1], 10);
-
             if (isNaN(width) || isNaN(height)) {
                 alert("make sure to remove the empty line when importing from html5b");
                 return;
@@ -111,19 +157,27 @@
                 grid.push(rowArr);
             }
             var footerLines = [];
-            for (var k = 2 + height; k < lines.length; k++) {
-                footerLines.push(lines[k]);
-            }
+            for (var k = 2 + height; k < lines.length; k++) footerLines.push(lines[k]);
             parsedData = {
-                header: header,
-                metaLine: metaLine,
-                width: width,
-                height: height,
-                grid: grid,
-                footerLines: footerLines,
+                header: header, metaLine: metaLine,
+                width: width, height: height,
+                grid: grid, footerLines: footerLines,
                 ids: Object.keys(uniqueIds).sort()
             };
+            assignColors();
             renderIds();
+            document.getElementById('grid-btn').style.display = '';
+        }
+        function assignColors() {
+            var existing = Object.keys(colorMap);
+            var sorted = parsedData.ids.slice().sort();
+            var idx = existing.length;
+            for (var i = 0; i < sorted.length; i++) {
+                if (!colorMap[sorted[i]]) {
+                    colorMap[sorted[i]] = PALETTE[idx % PALETTE.length];
+                    idx++;
+                }
+            }
         }
         function renderIds() {
             var listDiv = document.getElementById("id-list");
@@ -133,6 +187,8 @@
                 var btn = document.createElement("button");
                 btn.className = "id-button";
                 btn.innerText = idStr;
+                btn.style.background = colorMap[idStr] || '#999';
+                btn.style.color = '#fff';
                 (function(val) {
                     btn.onclick = function() { selectId(val); };
                 })(idStr);
@@ -152,9 +208,7 @@
         function executeReplace() {
             if (!parsedData || selectedId === null) return;
             var replaceWith = document.getElementById("new-id").value;
-            if (replaceWith.length !== 2) {
-                replaceWith = (replaceWith + "..").substring(0, 2);
-            }
+            if (replaceWith.length !== 2) replaceWith = (replaceWith + "..").substring(0, 2);
             var count = 0;
             for (var i = 0; i < parsedData.height; i++) {
                 for (var j = 0; j < parsedData.width; j++) {
@@ -166,25 +220,107 @@
             }
             rebuildText();
             cancel();
-            parseText(); 
+            parseText();
             alert("replaced " + count + " id(s)");
         }
         function rebuildText() {
-            var out = [];
-            out.push(parsedData.header);
-            out.push(parsedData.metaLine);
-            for (var i = 0; i < parsedData.height; i++) {
-                out.push(parsedData.grid[i].join(''));
-            }
-            for (var j = 0; j < parsedData.footerLines.length; j++) {
-                out.push(parsedData.footerLines[j]);
-            }
+            var out = [parsedData.header, parsedData.metaLine];
+            for (var i = 0; i < parsedData.height; i++) out.push(parsedData.grid[i].join(''));
+            for (var j = 0; j < parsedData.footerLines.length; j++) out.push(parsedData.footerLines[j]);
             document.getElementById("levelInput").value = out.join('\n');
         }
         function copyResult() {
             var txt = document.getElementById("levelInput");
             txt.select();
             document.execCommand("copy");
+        }
+        function setTool(t) {
+            currentTool = t;
+            document.getElementById('btn-bucket').className = 'tool-btn' + (t === 'bucket' ? ' active' : '');
+            document.getElementById('btn-pencil').className = 'tool-btn' + (t === 'pencil' ? ' active' : '');
+            gridCanvas.style.cursor = t === 'pencil' ? 'crosshair' : 'cell';
+        }
+        function openGridModal() {
+            if (!parsedData) return;
+            document.getElementById('grid-modal').style.display = 'block';
+            gridCanvas = document.getElementById('grid-canvas');
+            ctx = gridCanvas.getContext('2d');
+            gridCanvas.width = parsedData.width * CELL;
+            gridCanvas.height = parsedData.height * CELL;
+            drawGrid();
+            gridCanvas.onmousedown = function(e) { isPainting = true; handleCanvasAction(e); };
+            gridCanvas.onmousemove = function(e) { if (isPainting && currentTool === 'pencil') handleCanvasAction(e); };
+            gridCanvas.onmouseup = function() { isPainting = false; };
+            gridCanvas.onmouseleave = function() { isPainting = false; };
+        }
+        function closeGridModal() {
+            document.getElementById('grid-modal').style.display = 'none';
+        }
+        function applyGridChanges() {
+            rebuildText();
+            parseText();
+            closeGridModal();
+        }
+        function drawGrid() {
+            for (var r = 0; r < parsedData.height; r++) {
+                for (var c = 0; c < parsedData.width; c++) {
+                    var id = parsedData.grid[r][c];
+                    ctx.fillStyle = colorMap[id] || '#aaa';
+                    ctx.fillRect(c * CELL, r * CELL, CELL, CELL);
+                    ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+                    ctx.lineWidth = 0.5;
+                    ctx.strokeRect(c * CELL, r * CELL, CELL, CELL);
+                    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+                    ctx.font = '7px monospace';
+                    ctx.fillText(id, c * CELL + 2, r * CELL + CELL - 6);
+                }
+            }
+        }
+        function getCell(e) {
+            var rect = gridCanvas.getBoundingClientRect();
+            var scaleX = gridCanvas.width / rect.width;
+            var scaleY = gridCanvas.height / rect.height;
+            return {
+                c: Math.floor((e.clientX - rect.left) * scaleX / CELL),
+                r: Math.floor((e.clientY - rect.top) * scaleY / CELL)
+            };
+        }
+        function getPaintVal() {
+            var v = document.getElementById('paint-val').value;
+            if (v.length !== 2) v = (v + "..").substring(0, 2);
+            return v;
+        }
+        function handleCanvasAction(e) {
+            var pos = getCell(e);
+            var r = pos.r, c = pos.c;
+            if (r < 0 || r >= parsedData.height || c < 0 || c >= parsedData.width) return;
+            var paintVal = getPaintVal();
+            if (!colorMap[paintVal]) {
+                colorMap[paintVal] = PALETTE[Object.keys(colorMap).length % PALETTE.length];
+            }
+            if (currentTool === 'pencil') {
+                parsedData.grid[r][c] = paintVal;
+            } else {
+                var target = parsedData.grid[r][c];
+                if (target === paintVal) return;
+                floodFill(r, c, target, paintVal);
+            }
+            drawGrid();
+        }
+        function floodFill(startR, startC, target, replacement) {
+            var stack = [[startR, startC]];
+            var visited = {};
+            while (stack.length) {
+                var cur = stack.pop();
+                var r = cur[0], c = cur[1];
+                var key = r + ',' + c;
+                if (visited[key]) continue;
+                if (r < 0 || r >= parsedData.height || c < 0 || c >= parsedData.width) continue;
+                if (parsedData.grid[r][c] !== target) continue;
+                visited[key] = true;
+                parsedData.grid[r][c] = replacement;
+                stack.push([r+1,c],[r-1,c],[r,c+1],[r,c-1]);
+            }
         }
     </script>
 </body>
