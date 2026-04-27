@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>5id</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f4f4f4;
+            color: #333;
+        }
+        h1 { font-size: 20px; }
+        .wrapper {
+            display: table;
+            width: 100%;
+        }
+        .col {
+            display: table-cell;
+            vertical-align: top;
+            padding: 10px;
+            width: 50%;
+        }
+        textarea {
+            width: 100%;
+            height: 400px;
+            font-family: monospace;
+            white-space: pre;
+        }
+        .controls { margin-bottom: 10px; }
+        .id-button {
+            font-family: monospace;
+            font-size: 14px;
+            padding: 4px 8px;
+            margin: 2px;
+            cursor: pointer;
+        }
+        #replace-box {
+            border: 1px solid #000;
+            padding: 15px;
+            margin-top: 20px;
+            background: #fff;
+            display: none;
+        }
+        #replace-box label { font-weight: bold; }
+        input[type="text"] { font-family: monospace; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <h1>5 id - dino</h1>
+    <div class="wrapper">
+        <div class="col">
+            <div class="controls">
+                <button onclick="parseText()">process</button>
+                <button onclick="copyResult()">copy</button>
+            </div>
+            <textarea id="levelInput" placeholder="paste txt here"></textarea>
+        </div>
+
+        <div class="col">
+            <h3>id(s): </h3>
+            <div id="id-list">
+                <i>no tiles?</i>
+            </div>
+
+            <div id="replace-box">
+                <p>id(s) selected: <strong id="sel-id"></strong></p>
+                <label>swap to: </label>
+                <input type="text" id="new-id" maxlength="2" size="4">
+                <br><br>
+                <button onclick="executeReplace()">apply</button>
+                <button onclick="cancel()">cncel</button>
+            </div>
+        </div>
+    </div>
+    <script>
+        var parsedData = null;
+        var selectedId = null;
+        function parseText() {
+            var rawText = document.getElementById("levelInput").value;
+            if (!rawText) {
+                alert("empty");
+                return;
+            }
+            var lines = rawText.split(/\r?\n/);
+            if (lines.length < 3) {
+                alert("to short");
+                return;
+            }
+            var header = lines[0];
+            var metaLine = lines[1];
+            var metaParts = metaLine.split(',');
+            var width = parseInt(metaParts[0], 10);
+            var height = parseInt(metaParts[1], 10);
+
+            if (isNaN(width) || isNaN(height)) {
+                alert("make sure to remove the empty line when importing from html5b");
+                return;
+            }
+            var grid = [];
+            var uniqueIds = {};
+            for (var i = 0; i < height; i++) {
+                var rowStr = lines[2 + i] || "";
+                var rowArr = [];
+                for (var j = 0; j < width * 2; j += 2) {
+                    var chunk = rowStr.substring(j, j + 2);
+                    if (chunk.length < 2) chunk = chunk + ".";
+                    rowArr.push(chunk);
+                    uniqueIds[chunk] = true;
+                }
+                grid.push(rowArr);
+            }
+            var footerLines = [];
+            for (var k = 2 + height; k < lines.length; k++) {
+                footerLines.push(lines[k]);
+            }
+            parsedData = {
+                header: header,
+                metaLine: metaLine,
+                width: width,
+                height: height,
+                grid: grid,
+                footerLines: footerLines,
+                ids: Object.keys(uniqueIds).sort()
+            };
+            renderIds();
+        }
+        function renderIds() {
+            var listDiv = document.getElementById("id-list");
+            listDiv.innerHTML = "";
+            for (var i = 0; i < parsedData.ids.length; i++) {
+                var idStr = parsedData.ids[i];
+                var btn = document.createElement("button");
+                btn.className = "id-button";
+                btn.innerText = idStr;
+                (function(val) {
+                    btn.onclick = function() { selectId(val); };
+                })(idStr);
+                listDiv.appendChild(btn);
+            }
+        }
+        function selectId(idVal) {
+            selectedId = idVal;
+            document.getElementById("sel-id").innerText = idVal;
+            document.getElementById("new-id").value = idVal;
+            document.getElementById("replace-box").style.display = "block";
+        }
+        function cancel() {
+            selectedId = null;
+            document.getElementById("replace-box").style.display = "none";
+        }
+        function executeReplace() {
+            if (!parsedData || selectedId === null) return;
+            var replaceWith = document.getElementById("new-id").value;
+            if (replaceWith.length !== 2) {
+                replaceWith = (replaceWith + "..").substring(0, 2);
+            }
+            var count = 0;
+            for (var i = 0; i < parsedData.height; i++) {
+                for (var j = 0; j < parsedData.width; j++) {
+                    if (parsedData.grid[i][j] === selectedId) {
+                        parsedData.grid[i][j] = replaceWith;
+                        count++;
+                    }
+                }
+            }
+            rebuildText();
+            cancel();
+            parseText(); 
+            alert("replaced " + count + " id(s)");
+        }
+        function rebuildText() {
+            var out = [];
+            out.push(parsedData.header);
+            out.push(parsedData.metaLine);
+            for (var i = 0; i < parsedData.height; i++) {
+                out.push(parsedData.grid[i].join(''));
+            }
+            for (var j = 0; j < parsedData.footerLines.length; j++) {
+                out.push(parsedData.footerLines[j]);
+            }
+            document.getElementById("levelInput").value = out.join('\n');
+        }
+        function copyResult() {
+            var txt = document.getElementById("levelInput");
+            txt.select();
+            document.execCommand("copy");
+        }
+    </script>
+</body>
+</html>
