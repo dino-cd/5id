@@ -2,15 +2,15 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>5id</title>
+    <title>5id - dino's</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
+            font-family: monospace;
             margin: 20px;
-            background-color: #f4f4f4;
-            color: #333;
+            background-color: #ffffff;
+            color: #000;
         }
-        h1 { font-size: 20px; }
+        h1 { font-size: 18px; margin-top: 0; }
         .wrapper {
             display: table;
             width: 100%;
@@ -26,6 +26,7 @@
             height: 400px;
             font-family: monospace;
             white-space: pre;
+            border: 1px solid #777;
         }
         .controls { margin-bottom: 10px; }
         .id-button {
@@ -34,6 +35,8 @@
             padding: 4px 8px;
             margin: 2px;
             cursor: pointer;
+            border: 1px solid #000;
+            color: #fff;
         }
         #replace-box {
             border: 1px solid #000;
@@ -42,8 +45,6 @@
             background: #fff;
             display: none;
         }
-        #replace-box label { font-weight: bold; }
-        input[type="text"] { font-family: monospace; font-size: 14px; }
 
         #grid-modal {
             display: none;
@@ -52,36 +53,96 @@
             width: 100%; height: 100%;
             background: rgba(0,0,0,0.5);
             z-index: 100;
+            overflow: auto;
         }
         #grid-modal-inner {
-            background: #f4f4f4;
+            background: #fff;
             margin: 20px auto;
             max-width: 95%;
-            max-height: 92vh;
-            overflow: auto;
             padding: 15px;
+            border: 2px solid #000;
+        }
+
+        .grid-container {
+            display: flex;
+            gap: 15px;
+            align-items: flex-start;
+        }
+        #sidebar {
+            width: 120px;
+            border-left: 1px solid #ccc;
+            padding-left: 15px;
+        }
+        .sidebar-title { font-weight: bold; margin-bottom: 10px; font-size: 12px; }
+        .recent-id-item {
+            display: block;
+            width: 100%;
+            margin-bottom: 4px;
+            text-align: center;
             border: 1px solid #000;
-        }
-        #grid-modal-inner h3 { margin-top: 0; font-size: 16px; }
-        .modal-controls { margin-bottom: 10px; font-family: monospace; font-size: 13px; }
-        .tool-btn {
-            font-family: monospace;
-            font-size: 13px;
-            padding: 3px 8px;
-            margin: 2px;
+            color: #fff;
             cursor: pointer;
+            padding: 4px 0;
+            font-size: 12px;
         }
-        .tool-btn.active { background: #333; color: #fff; }
-        #grid-canvas { display: block; cursor: cell; image-rendering: pixelated; }
+
+        #grid-canvas { display: block; cursor: cell; image-rendering: pixelated; border: 1px solid #ccc; }
+
+        #save-modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 200;
+        }
+        #save-modal-inner {
+            background: #fff;
+            margin: 50px auto;
+            width: 500px;
+            border: 1px solid #000;
+            padding: 15px;
+        }
+        .save-header {
+            font-weight: bold;
+            border-bottom: 1px solid #000;
+            padding-bottom: 5px;
+            margin-bottom: 10px;
+        }
+        .save-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 3px 0;
+            border-bottom: 1px dotted #ccc;
+        }
+        button {
+            cursor: pointer;
+            background: #eee;
+            border: 1px solid #777;
+            font-family: monospace;
+            padding: 4px 8px;
+        }
+        button:hover { background: #ddd; }
+        input[type="text"] { border: 1px solid #777; padding: 2px; }
+        .active-tool { background: #bbb !important; border: 2px solid #000; }
+
+        .play-btn {
+            background: #27ae60 !important;
+            color: white !important;
+            font-weight: bold;
+            border-color: #1e8449 !important;
+        }
     </style>
 </head>
 <body>
-    <h1>5 id - dino</h1>
+    <h1>5id - dino's</h1>
     <div class="wrapper">
         <div class="col">
             <div class="controls">
+                <button class="play-btn" onclick="playLevel()">play</button>
                 <button onclick="parseText()">process</button>
                 <button onclick="copyResult()">copy</button>
+                <button onclick="openSaveManager()">save load</button>
                 <button id="grid-btn" onclick="openGridModal()" style="display:none">grid view</button>
             </div>
             <textarea id="levelInput" placeholder="paste txt here"></textarea>
@@ -97,231 +158,404 @@
                 <input type="text" id="new-id" maxlength="2" size="4">
                 <br><br>
                 <button onclick="executeReplace()">apply</button>
-                <button onclick="cancel()">cncel</button>
+                <button onclick="cancel()">cancel</button>
             </div>
         </div>
     </div>
+
     <div id="grid-modal">
         <div id="grid-modal-inner">
             <h3>grid view</h3>
-            <div class="modal-controls">
-                <button class="tool-btn active" id="btn-bucket" onclick="setTool('bucket')">bucket</button>
-                <button class="tool-btn" id="btn-pencil" onclick="setTool('pencil')">pencil</button>
-                &nbsp;|&nbsp;
-                paint value: <input type="text" id="paint-val" maxlength="2" size="4" value="..">
-                &nbsp;&nbsp;
-                <button onclick="applyGridChanges()">apply + close</button>
+            <div class="controls" id="tool-bar">
+                <button id="btn-bucket" onclick="setTool('bucket')">bucket</button>
+                <button id="btn-pencil" onclick="setTool('pencil')">pencil</button>
+                <button id="btn-line" onclick="setTool('line')">line</button>
+                <button id="btn-rect" onclick="setTool('rect')">rect</button>
+                <button id="btn-oval" onclick="setTool('oval')">oval</button>
+                <button id="btn-select" onclick="setTool('select')">select</button>
+                <button id="btn-picker" onclick="setTool('picker')">picker</button>
+                | <input type="checkbox" id="fill-shape"> <label for="fill-shape">fill</label>
+                | paint value: <input type="text" id="paint-val" maxlength="2" size="4" value="..">
+                <button onclick="applyGridChanges()">apply and close</button>
                 <button onclick="closeGridModal()">close</button>
             </div>
-            <canvas id="grid-canvas"></canvas>
+
+            <div class="grid-container">
+                <canvas id="grid-canvas"></canvas>
+                <div id="sidebar">
+                    <div class="sidebar-title">RECENT IDS</div>
+                    <div id="recent-ids-list"></div>
+                </div>
+            </div>
         </div>
     </div>
+
+    <div id="save-modal">
+        <div id="save-modal-inner">
+            <div class="save-header">load</div>
+            <div style="margin-bottom: 10px;">
+                <input type="text" id="new-save-name" placeholder="level_name" size="25">
+                <button onclick="saveCurrentLevel()">Save current</button>
+            </div>
+            <div id="saved-levels-list" style="max-height: 300px; overflow-y: auto; border-top: 1px solid #ccc;">
+                <i>loading...</i>
+            </div>
+            <div style="margin-top: 15px; text-align: right;">
+                <button onclick="closeSaveManager()">Close</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         var parsedData = null;
         var selectedId = null;
-        var currentTool = 'bucket';
+        var currentTool = 'pencil';
         var colorMap = {};
         var CELL = 22;
         var gridCanvas, ctx;
         var isPainting = false;
+
+        var undoStack = [];
+        var redoStack = [];
+        const MAX_HISTORY = 50;
+        var recentIds = [];
+
+        var selectionArea = null; 
+        var clipboard = null;    
+        var isStamping = false;
+        var mousePos = {r: 0, c: 0};
+
         var PALETTE = [
-            '#c0392b','#2980b9','#27ae60','#d35400','#8e44ad',
-            '#16a085','#f39c12','#2c3e50','#e74c3c','#1abc9c',
-            '#e67e22','#3498db','#2ecc71','#9b59b6','#f1c40f'
+            '#c0392b','#2980b9','#27ae60','#d35400','#8e44ad','#16a085','#f39c12','#2c3e50',
+            '#ff4757','#ff6348','#ffa502','#2ed573','#1e90ff','#3742fa','#5352ed','#70a1ff'
         ];
+
+        var isShapeStarted = false;
+        var shapeStartR = -1;
+        var shapeStartC = -1;
+        const STORAGE_KEY = '5id_dino_levels';
+
+        function playLevel() {
+            const levelString = document.getElementById("levelInput").value;
+            if (!levelString.trim()) {
+                alert("The level is empty!");
+                return;
+            }
+
+            const url = "dino-cd.github.io/forky/?lv=" + encodeURIComponent(levelString);
+            window.open(url, "_blank");
+        }
+
+        function updateRecentIds(id) {
+            if (id === ".." || !id) return;
+            recentIds = recentIds.filter(x => x !== id);
+            recentIds.unshift(id);
+            if (recentIds.length > 10) recentIds.pop();
+            renderSidebar();
+        }
+
+        function renderSidebar() {
+            const list = document.getElementById('recent-ids-list');
+            list.innerHTML = '';
+            recentIds.forEach(id => {
+                const div = document.createElement('div');
+                div.className = 'recent-id-item';
+                div.innerText = id;
+                div.style.backgroundColor = colorMap[id] || '#aaa';
+                div.onclick = () => { document.getElementById('paint-val').value = id; };
+                list.appendChild(div);
+            });
+        }
+
+        function pushState() {
+            if (!parsedData) return;
+            const state = JSON.stringify(parsedData.grid);
+            if (undoStack.length > 0 && undoStack[undoStack.length - 1] === state) return;
+            undoStack.push(state);
+            if (undoStack.length > MAX_HISTORY) undoStack.shift();
+            redoStack = [];
+        }
+
+        function undo() {
+            if (undoStack.length <= 1) return;
+            redoStack.push(undoStack.pop());
+            applyState(undoStack[undoStack.length - 1]);
+        }
+
+        function redo() {
+            if (redoStack.length === 0) return;
+            const state = redoStack.pop();
+            undoStack.push(state);
+            applyState(state);
+        }
+
+        function applyState(stateStr) {
+            parsedData.grid = JSON.parse(stateStr);
+            rebuildText();
+            if (document.getElementById('grid-modal').style.display === 'block') drawGrid();
+            renderIds();
+        }
+
+        window.addEventListener('keydown', function(e) {
+            if (e.ctrlKey || e.metaKey) {
+                if (e.key === 'z') { e.preventDefault(); undo(); } 
+                else if (e.key === 'y') { e.preventDefault(); redo(); } 
+                else if (e.key === 'c' && currentTool === 'select' && selectionArea) { e.preventDefault(); copySelection(); }
+            }
+        });
+
+        function copySelection() {
+            const {r1, c1, r2, c2} = selectionArea;
+            const minR = Math.min(r1, r2), maxR = Math.max(r1, r2);
+            const minC = Math.min(c1, c2), maxC = Math.max(c1, c2);
+            const data = [];
+            for (let r = minR; r <= maxR; r++) {
+                const row = [];
+                for (let c = minC; c <= maxC; c++) { row.push(parsedData.grid[r][c]); }
+                data.push(row);
+            }
+            clipboard = { width: (maxC - minC + 1), height: (maxR - minR + 1), data: data };
+            isStamping = true;
+            selectionArea = null; 
+            drawGrid();
+        }
+
+        function applyStamp(startR, startC) {
+            if (!clipboard) return;
+            clipboard.data.forEach((row, rOff) => {
+                row.forEach((val, cOff) => {
+                    const tr = startR + rOff;
+                    const tc = startC + cOff;
+                    if (tr < parsedData.height && tc < parsedData.width) { parsedData.grid[tr][tc] = val; }
+                });
+            });
+            pushState();
+            drawGrid();
+        }
+
+        function loadSavedLevels() {
+            let raw = localStorage.getItem(STORAGE_KEY);
+            return raw ? JSON.parse(raw) : {};
+        }
+
+        function saveCurrentLevel() {
+            let name = document.getElementById('new-save-name').value.trim();
+            let content = document.getElementById("levelInput").value;
+            if (!name || !content) return alert("missing");
+            let levels = loadSavedLevels();
+            levels[name] = content;
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(levels));
+            refreshSavedLevelsList();
+        }
+
+        function refreshSavedLevelsList() {
+            let levels = loadSavedLevels();
+            let container = document.getElementById('saved-levels-list');
+            let keys = Object.keys(levels);
+            if (keys.length === 0) { container.innerHTML = '<br><i>Empty</i>'; return; }
+            let html = '';
+            keys.sort().forEach(name => {
+                html += `<div class="save-item"><span>${name}</span><div><button onclick="openSavedLevel('${name}')">load</button></div></div>`;
+            });
+            container.innerHTML = html;
+        }
+
+        function openSavedLevel(name) {
+            let levels = loadSavedLevels();
+            document.getElementById("levelInput").value = levels[name];
+            parseText();
+            closeSaveManager();
+        }
+
+        function openSaveManager() { refreshSavedLevelsList(); document.getElementById('save-modal').style.display = 'block'; }
+        function closeSaveManager() { document.getElementById('save-modal').style.display = 'none'; }
+
         function parseText() {
             var rawText = document.getElementById("levelInput").value;
-            if (!rawText) { alert("empty"); return; }
+            if (!rawText) return;
             var lines = rawText.split(/\r?\n/);
-            if (lines.length < 3) { alert("to short"); return; }
             var header = lines[0];
             var metaLine = lines[1];
             var metaParts = metaLine.split(',');
             var width = parseInt(metaParts[0], 10);
             var height = parseInt(metaParts[1], 10);
-            if (isNaN(width) || isNaN(height)) {
-                alert("make sure to remove the empty line when importing from html5b");
-                return;
-            }
             var grid = [];
             var uniqueIds = {};
             for (var i = 0; i < height; i++) {
                 var rowStr = lines[2 + i] || "";
                 var rowArr = [];
                 for (var j = 0; j < width * 2; j += 2) {
-                    var chunk = rowStr.substring(j, j + 2);
-                    if (chunk.length < 2) chunk = chunk + ".";
+                    var chunk = rowStr.substring(j, j + 2).padEnd(2, ".");
                     rowArr.push(chunk);
                     uniqueIds[chunk] = true;
                 }
                 grid.push(rowArr);
             }
-            var footerLines = [];
-            for (var k = 2 + height; k < lines.length; k++) footerLines.push(lines[k]);
-            parsedData = {
-                header: header, metaLine: metaLine,
-                width: width, height: height,
-                grid: grid, footerLines: footerLines,
-                ids: Object.keys(uniqueIds).sort()
-            };
+            parsedData = { header, metaLine, width, height, grid, footerLines: lines.slice(2 + height), ids: Object.keys(uniqueIds).sort() };
+            if (undoStack.length === 0) pushState();
             assignColors();
             renderIds();
-            document.getElementById('grid-btn').style.display = '';
+            document.getElementById('grid-btn').style.display = 'inline-block';
         }
+
         function assignColors() {
-            var existing = Object.keys(colorMap);
-            var sorted = parsedData.ids.slice().sort();
-            var idx = existing.length;
-            for (var i = 0; i < sorted.length; i++) {
-                if (!colorMap[sorted[i]]) {
-                    colorMap[sorted[i]] = PALETTE[idx % PALETTE.length];
-                    idx++;
-                }
-            }
+            parsedData.ids.forEach((id, i) => { if (!colorMap[id]) colorMap[id] = PALETTE[i % PALETTE.length]; });
         }
+
         function renderIds() {
             var listDiv = document.getElementById("id-list");
             listDiv.innerHTML = "";
-            for (var i = 0; i < parsedData.ids.length; i++) {
-                var idStr = parsedData.ids[i];
+            parsedData.ids.forEach(id => {
                 var btn = document.createElement("button");
                 btn.className = "id-button";
-                btn.innerText = idStr;
-                btn.style.background = colorMap[idStr] || '#999';
-                btn.style.color = '#fff';
-                (function(val) {
-                    btn.onclick = function() { selectId(val); };
-                })(idStr);
+                btn.innerText = id;
+                btn.style.background = colorMap[id];
+                btn.onclick = () => {
+                    selectedId = id;
+                    document.getElementById("sel-id").innerText = id;
+                    document.getElementById("new-id").value = id;
+                    document.getElementById("replace-box").style.display = "block";
+                };
                 listDiv.appendChild(btn);
-            }
+            });
         }
-        function selectId(idVal) {
-            selectedId = idVal;
-            document.getElementById("sel-id").innerText = idVal;
-            document.getElementById("new-id").value = idVal;
-            document.getElementById("replace-box").style.display = "block";
-        }
-        function cancel() {
-            selectedId = null;
-            document.getElementById("replace-box").style.display = "none";
-        }
+
         function executeReplace() {
-            if (!parsedData || selectedId === null) return;
-            var replaceWith = document.getElementById("new-id").value;
-            if (replaceWith.length !== 2) replaceWith = (replaceWith + "..").substring(0, 2);
-            var count = 0;
-            for (var i = 0; i < parsedData.height; i++) {
-                for (var j = 0; j < parsedData.width; j++) {
-                    if (parsedData.grid[i][j] === selectedId) {
-                        parsedData.grid[i][j] = replaceWith;
-                        count++;
-                    }
-                }
-            }
+            var replaceWith = document.getElementById("new-id").value.padEnd(2, ".");
+            parsedData.grid.forEach((row, r) => {
+                row.forEach((cell, c) => { if (cell === selectedId) parsedData.grid[r][c] = replaceWith; });
+            });
+            pushState();
             rebuildText();
-            cancel();
+            document.getElementById("replace-box").style.display = "none";
             parseText();
-            alert("replaced " + count + " id(s)");
         }
+
         function rebuildText() {
             var out = [parsedData.header, parsedData.metaLine];
-            for (var i = 0; i < parsedData.height; i++) out.push(parsedData.grid[i].join(''));
-            for (var j = 0; j < parsedData.footerLines.length; j++) out.push(parsedData.footerLines[j]);
+            parsedData.grid.forEach(row => out.push(row.join('')));
+            parsedData.footerLines.forEach(line => out.push(line));
             document.getElementById("levelInput").value = out.join('\n');
         }
+
         function copyResult() {
-            var txt = document.getElementById("levelInput");
-            txt.select();
+            document.getElementById("levelInput").select();
             document.execCommand("copy");
+            alert("Copied to clipboard!");
         }
-        function setTool(t) {
-            currentTool = t;
-            document.getElementById('btn-bucket').className = 'tool-btn' + (t === 'bucket' ? ' active' : '');
-            document.getElementById('btn-pencil').className = 'tool-btn' + (t === 'pencil' ? ' active' : '');
-            gridCanvas.style.cursor = t === 'pencil' ? 'crosshair' : 'cell';
-        }
+
         function openGridModal() {
-            if (!parsedData) return;
             document.getElementById('grid-modal').style.display = 'block';
             gridCanvas = document.getElementById('grid-canvas');
             ctx = gridCanvas.getContext('2d');
             gridCanvas.width = parsedData.width * CELL;
             gridCanvas.height = parsedData.height * CELL;
+            setTool(currentTool);
+            renderSidebar();
             drawGrid();
-            gridCanvas.onmousedown = function(e) { isPainting = true; handleCanvasAction(e); };
-            gridCanvas.onmousemove = function(e) { if (isPainting && currentTool === 'pencil') handleCanvasAction(e); };
-            gridCanvas.onmouseup = function() { isPainting = false; };
-            gridCanvas.onmouseleave = function() { isPainting = false; };
+            gridCanvas.onmousedown = handleMouseDown;
+            gridCanvas.onmousemove = handleMouseMove;
+            window.onmouseup = () => { if(isPainting) pushState(); isPainting = false; };
         }
-        function closeGridModal() {
-            document.getElementById('grid-modal').style.display = 'none';
-        }
-        function applyGridChanges() {
-            rebuildText();
-            parseText();
-            closeGridModal();
-        }
+
         function drawGrid() {
+            ctx.clearRect(0,0, gridCanvas.width, gridCanvas.height);
+            ctx.font = '10px arial'; ctx.textAlign = "center"; ctx.textBaseline = "middle";
             for (var r = 0; r < parsedData.height; r++) {
                 for (var c = 0; c < parsedData.width; c++) {
                     var id = parsedData.grid[r][c];
                     ctx.fillStyle = colorMap[id] || '#aaa';
                     ctx.fillRect(c * CELL, r * CELL, CELL, CELL);
-                    ctx.strokeStyle = 'rgba(0,0,0,0.2)';
-                    ctx.lineWidth = 0.5;
+                    ctx.strokeStyle = 'rgba(0,0,0,0.1)';
                     ctx.strokeRect(c * CELL, r * CELL, CELL, CELL);
-                    ctx.fillStyle = 'rgba(255,255,255,0.85)';
-                    ctx.font = '7px monospace';
-                    ctx.fillText(id, c * CELL + 2, r * CELL + CELL - 6);
+                    ctx.fillStyle = '#fff';
+                    ctx.fillText(id, c * CELL + (CELL / 2), r * CELL + (CELL / 2));
                 }
             }
+            if (selectionArea) {
+                const minR = Math.min(selectionArea.r1, selectionArea.r2), maxR = Math.max(selectionArea.r1, selectionArea.r2);
+                const minC = Math.min(selectionArea.c1, selectionArea.c2), maxC = Math.max(selectionArea.c1, selectionArea.c2);
+                ctx.strokeStyle = '#00f'; ctx.lineWidth = 2;
+                ctx.strokeRect(minC * CELL, minR * CELL, (maxC - minC + 1) * CELL, (maxR - minR + 1) * CELL);
+                ctx.fillStyle = 'rgba(0, 0, 255, 0.1)';
+                ctx.fillRect(minC * CELL, minR * CELL, (maxC - minC + 1) * CELL, (maxR - minR + 1) * CELL);
+                ctx.lineWidth = 1;
+            }
+            if (isStamping && clipboard) {
+                ctx.globalAlpha = 0.5;
+                clipboard.data.forEach((row, rOff) => {
+                    row.forEach((val, cOff) => {
+                        const tr = mousePos.r + rOff, tc = mousePos.c + cOff;
+                        if (tr < parsedData.height && tc < parsedData.width) {
+                            ctx.fillStyle = colorMap[val] || '#aaa';
+                            ctx.fillRect(tc * CELL, tr * CELL, CELL, CELL);
+                        }
+                    });
+                });
+                ctx.globalAlpha = 1.0;
+            }
         }
-        function getCell(e) {
+
+        function handleMouseDown(e) {
             var rect = gridCanvas.getBoundingClientRect();
-            var scaleX = gridCanvas.width / rect.width;
-            var scaleY = gridCanvas.height / rect.height;
-            return {
-                c: Math.floor((e.clientX - rect.left) * scaleX / CELL),
-                r: Math.floor((e.clientY - rect.top) * scaleY / CELL)
-            };
-        }
-        function getPaintVal() {
-            var v = document.getElementById('paint-val').value;
-            if (v.length !== 2) v = (v + "..").substring(0, 2);
-            return v;
-        }
-        function handleCanvasAction(e) {
-            var pos = getCell(e);
-            var r = pos.r, c = pos.c;
-            if (r < 0 || r >= parsedData.height || c < 0 || c >= parsedData.width) return;
-            var paintVal = getPaintVal();
-            if (!colorMap[paintVal]) {
-                colorMap[paintVal] = PALETTE[Object.keys(colorMap).length % PALETTE.length];
+            var c = Math.floor((e.clientX - rect.left) / CELL), r = Math.floor((e.clientY - rect.top) / CELL);
+            if (isStamping) { applyStamp(r, c); return; }
+            if (currentTool === 'picker') {
+                const picked = parsedData.grid[r][c];
+                document.getElementById('paint-val').value = picked;
+                updateRecentIds(picked);
+                setTool('pencil');
+                return;
             }
-            if (currentTool === 'pencil') {
-                parsedData.grid[r][c] = paintVal;
-            } else {
-                var target = parsedData.grid[r][c];
-                if (target === paintVal) return;
-                floodFill(r, c, target, paintVal);
-            }
+            if (currentTool === 'select') {
+                if (!isShapeStarted) { shapeStartR = r; shapeStartC = c; isShapeStarted = true; selectionArea = {r1: r, c1: c, r2: r, c2: c}; }
+                else { selectionArea = {r1: shapeStartR, c1: shapeStartC, r2: r, c2: c}; isShapeStarted = false; }
+                drawGrid();
+            } else if (['line', 'rect', 'oval'].includes(currentTool)) {
+                if (!isShapeStarted) { shapeStartR = r; shapeStartC = c; isShapeStarted = true; drawGrid(); previewShape(shapeStartR, shapeStartC, r, c); }
+                else { applyShape(shapeStartR, shapeStartC, r, c); pushState(); isShapeStarted = false; drawGrid(); }
+            } else { isPainting = true; handleAction(e); }
+        }
+
+        function handleMouseMove(e) {
+            var rect = gridCanvas.getBoundingClientRect();
+            var c = Math.floor((e.clientX - rect.left) / CELL), r = Math.floor((e.clientY - rect.top) / CELL);
+            mousePos = {r, c};
+            if (isStamping || isShapeStarted) drawGrid();
+            if (currentTool === 'select' && isShapeStarted) { selectionArea = {r1: shapeStartR, c1: shapeStartC, r2: r, c2: c}; }
+            else if (['line', 'rect', 'oval'].includes(currentTool) && isShapeStarted) { previewShape(shapeStartR, shapeStartC, r, c); }
+            else if (isPainting && currentTool === 'pencil') handleAction(e);
+        }
+
+        function handleAction(e) {
+            var rect = gridCanvas.getBoundingClientRect();
+            var c = Math.floor((e.clientX - rect.left) / CELL), r = Math.floor((e.clientY - rect.top) / CELL);
+            var val = document.getElementById('paint-val').value.padEnd(2, ".");
+            if (!colorMap[val]) colorMap[val] = PALETTE[Object.keys(colorMap).length % PALETTE.length];
+            if (currentTool === 'pencil') { parsedData.grid[r][c] = val; updateRecentIds(val); }
+            else if (currentTool === 'bucket') { floodFill(r, c, parsedData.grid[r][c], val); updateRecentIds(val); pushState(); }
             drawGrid();
         }
-        function floodFill(startR, startC, target, replacement) {
-            var stack = [[startR, startC]];
-            var visited = {};
-            while (stack.length) {
-                var cur = stack.pop();
-                var r = cur[0], c = cur[1];
-                var key = r + ',' + c;
-                if (visited[key]) continue;
-                if (r < 0 || r >= parsedData.height || c < 0 || c >= parsedData.width) continue;
-                if (parsedData.grid[r][c] !== target) continue;
-                visited[key] = true;
-                parsedData.grid[r][c] = replacement;
-                stack.push([r+1,c],[r-1,c],[r,c+1],[r,c-1]);
-            }
+
+        function floodFill(r, c, target, replacement) {
+            if (target === replacement || r < 0 || r >= parsedData.height || c < 0 || c >= parsedData.width || parsedData.grid[r][c] !== target) return;
+            parsedData.grid[r][c] = replacement;
+            floodFill(r+1, c, target, replacement); floodFill(r-1, c, target, replacement);
+            floodFill(r, c+1, target, replacement); floodFill(r, c-1, target, replacement);
         }
+
+        function setTool(t) { 
+            if (t === 'select' && currentTool === 'select') { selectionArea = null; clipboard = null; isStamping = false; }
+            currentTool = t; isShapeStarted = false; 
+            document.querySelectorAll('#tool-bar button').forEach(b => b.classList.remove('active-tool'));
+            const activeBtn = document.getElementById('btn-' + t);
+            if(activeBtn) activeBtn.classList.add('active-tool');
+            if(document.getElementById('grid-modal').style.display === 'block') drawGrid(); 
+        }
+
+        function closeGridModal() { document.getElementById('grid-modal').style.display = 'none'; }
+        function applyGridChanges() { rebuildText(); parseText(); closeGridModal(); }
+        function cancel() { document.getElementById("replace-box").style.display = "none"; }
     </script>
 </body>
 </html>
