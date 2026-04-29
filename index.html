@@ -340,8 +340,9 @@
 
         function saveCurrentLevel() {
             let name = document.getElementById('new-save-name').value.trim();
+            if (parsedData) rebuildText(); 
             let content = document.getElementById("levelInput").value;
-            if (!name || !content) return alert("missing");
+            if (!name || !content) return alert("?? error");
             let levels = loadSavedLevels();
             levels[name] = content;
             localStorage.setItem(STORAGE_KEY, JSON.stringify(levels));
@@ -556,6 +557,92 @@
         function closeGridModal() { document.getElementById('grid-modal').style.display = 'none'; }
         function applyGridChanges() { rebuildText(); parseText(); closeGridModal(); }
         function cancel() { document.getElementById("replace-box").style.display = "none"; }
+        function getShapePoints(tool, r1, c1, r2, c2, isFilled) {
+            let points = [];
+            let minR = Math.min(r1, r2), maxR = Math.max(r1, r2);
+            let minC = Math.min(c1, c2), maxC = Math.max(c1, c2);
+
+            if (tool === 'line') {
+                let dr = Math.abs(r2 - r1), sr = r1 < r2 ? 1 : -1;
+                let dc = Math.abs(c2 - c1), sc = c1 < c2 ? 1 : -1;
+                let err = (dc > dr ? dc : -dr) / 2, e2;
+                let curR = r1, curC = c1;
+
+                while (true) {
+                    points.push({r: curR, c: curC});
+                    if (curR === r2 && curC === c2) break;
+                    e2 = err;
+                    if (e2 > -dc) { err -= dr; curC += sc; }
+                    if (e2 < dr) { err += dc; curR += sr; }
+                }
+            } 
+            else if (tool === 'rect') {
+                for (let r = minR; r <= maxR; r++) {
+                    for (let c = minC; c <= maxC; c++) {
+                        if (isFilled || r === minR || r === maxR || c === minC || c === maxC) {
+                            points.push({r, c});
+                        }
+                    }
+                }
+            }
+            else if (tool === 'oval') {
+                let radiusR = (maxR - minR) / 2;
+                let radiusC = (maxC - minC) / 2;
+                let centerR = minR + radiusR;
+                let centerC = minC + radiusC;
+                for (let r = minR; r <= maxR; r++) {
+                    for (let c = minC; c <= maxC; c++) {
+                        let normalizedC = radiusC === 0 ? 0 : Math.pow((c - centerC) / (radiusC + 0.2), 2);
+                        let normalizedR = radiusR === 0 ? 0 : Math.pow((r - centerR) / (radiusR + 0.2), 2);
+                        
+                        if (normalizedC + normalizedR <= 1) {
+                            points.push({r, c});
+                        }
+                    }
+                }
+                if (!isFilled) {
+                    let edges = [];
+                    points.forEach(p => {
+                        let hasOutsideNeighbor = false;
+                        [[0,1],[1,0],[0,-1],[-1,0]].forEach(dir => {
+                            if (!points.some(pt => pt.r === p.r + dir[0] && pt.c === p.c + dir[1])) {
+                                hasOutsideNeighbor = true;
+                            }
+                        });
+                        if (hasOutsideNeighbor) edges.push(p);
+                    });
+                    points = edges;
+                }
+            }
+            return points;
+        }
+
+        function previewShape(r1, c1, r2, c2) {
+            var val = document.getElementById('paint-val').value.padEnd(2, ".");
+            var isFilled = document.getElementById('fill-shape').checked;
+
+            ctx.fillStyle = colorMap[val] || '#aaa';
+            ctx.globalAlpha = 0.5;
+            let points = getShapePoints(currentTool, r1, c1, r2, c2, isFilled);
+            points.forEach(p => {
+                if (p.r >= 0 && p.r < parsedData.height && p.c >= 0 && p.c < parsedData.width) {
+                    ctx.fillRect(p.c * CELL, p.r * CELL, CELL, CELL);
+                }
+            });
+
+            ctx.globalAlpha = 1.0;
+        }
+        function applyShape(r1, c1, r2, c2) {
+            var val = document.getElementById('paint-val').value.padEnd(2, ".");
+            var isFilled = document.getElementById('fill-shape').checked;
+            let points = getShapePoints(currentTool, r1, c1, r2, c2, isFilled);
+            points.forEach(p => {
+                if (p.r >= 0 && p.r < parsedData.height && p.c >= 0 && p.c < parsedData.width) {
+                    parsedData.grid[p.r][p.c] = val;
+                }
+            });
+            updateRecentIds(val);
+        }
     </script>
 </body>
 </html>
