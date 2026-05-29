@@ -5,7 +5,7 @@
     <title>5id - dino's</title>
     <style>
         body {
-            font-family: monospace;
+            font-family: arial, sans-serif;
             margin: 20px;
             background-color: #ffffff;
             color: #000;
@@ -30,7 +30,7 @@
         }
         .controls { margin-bottom: 10px; }
         .id-button {
-            font-family: monospace;
+            font-family: arial, sans-serif;
             font-size: 14px;
             padding: 4px 8px;
             margin: 2px;
@@ -119,7 +119,7 @@
             cursor: pointer;
             background: #eee;
             border: 1px solid #777;
-            font-family: monospace;
+            font-family: arial, sans-serif;
             padding: 4px 8px;
         }
         button:hover { background: #ddd; }
@@ -144,6 +144,9 @@
                 <button onclick="copyResult()">copy</button>
                 <button onclick="openSaveManager()">save load</button>
                 <button id="grid-btn" onclick="openGridModal()" style="display:none">grid view</button>
+                <button onclick="document.getElementById('gif-input').click()">import gif</button>
+                <input type="file" id="gif-input" accept=".gif" style="display:none" onchange="handleGifUpload(event)">
+                <span id="gif-load-status" style="font-size:11px;margin-left:6px;"></span>
             </div>
             <textarea id="levelInput" placeholder="paste txt here"></textarea>
         </div>
@@ -178,6 +181,7 @@
                 | paint value: <input type="text" id="paint-val" maxlength="2" size="4" value="..">
                 <button onclick="applyGridChanges()">apply and close</button>
                 <button onclick="closeGridModal()">close</button>
+                | <input type="checkbox" id="show-ids" checked onchange="drawGrid()"> <label for="show-ids">show ids</label>
             </div>
 
             <div class="grid-container">
@@ -186,6 +190,10 @@
                     <div class="sidebar-title">RECENT IDS</div>
                     <div id="recent-ids-list"></div>
                 </div>
+            </div>
+            <div id="cursor-info" style="margin-top:6px;font-size:12px;font-family:arial,sans-serif;color:#555;height:16px;display:flex;gap:20px;">
+                <span id="cursor-pos"></span>
+                <span id="tool-hint" style="color:#888;"></span>
             </div>
         </div>
     </div>
@@ -223,7 +231,16 @@
         var selectionArea = null; 
         var clipboard = null;    
         var isStamping = false;
-        var mousePos = {r: 0, c: 0};
+        var mousePos = {r: -1, c: -1};
+
+        var gifIdMap = {};
+        var gifTick = 0;
+        var gifAnimInterval = null;
+
+        var selectionArea = null; 
+        var clipboard = null;    
+        var isStamping = false;
+        var mousePos = {r: -1, c: -1};
 
         var PALETTE = [
             '#c0392b','#2980b9','#27ae60','#d35400','#8e44ad','#16a085','#f39c12','#2c3e50',
@@ -456,21 +473,36 @@
             drawGrid();
             gridCanvas.onmousedown = handleMouseDown;
             gridCanvas.onmousemove = handleMouseMove;
+            gridCanvas.onmouseleave = function() { mousePos = {r: -1, c: -1}; document.getElementById('cursor-pos').innerText = ''; drawGrid(); };
             window.onmouseup = () => { if(isPainting) pushState(); isPainting = false; };
+            if (gifAnimInterval) clearInterval(gifAnimInterval);
+            gifAnimInterval = setInterval(function() {
+                if (Object.keys(gifIdMap).length > 0) { gifTick++; drawGrid(); }
+            }, 100);
         }
 
         function drawGrid() {
             ctx.clearRect(0,0, gridCanvas.width, gridCanvas.height);
+            var showIds = document.getElementById('show-ids').checked;
             ctx.font = '10px arial'; ctx.textAlign = "center"; ctx.textBaseline = "middle";
             for (var r = 0; r < parsedData.height; r++) {
                 for (var c = 0; c < parsedData.width; c++) {
                     var id = parsedData.grid[r][c];
-                    ctx.fillStyle = colorMap[id] || '#aaa';
-                    ctx.fillRect(c * CELL, r * CELL, CELL, CELL);
+                    var x = c * CELL, y = r * CELL;
+                    if (gifIdMap[id]) {
+                        var frames = gifIdMap[id];
+                        var frame = frames[gifTick % frames.length];
+                        ctx.drawImage(frame, x, y, CELL, CELL);
+                    } else {
+                        ctx.fillStyle = colorMap[id] || '#aaa';
+                        ctx.fillRect(x, y, CELL, CELL);
+                    }
                     ctx.strokeStyle = 'rgba(0,0,0,0.1)';
-                    ctx.strokeRect(c * CELL, r * CELL, CELL, CELL);
-                    ctx.fillStyle = '#fff';
-                    ctx.fillText(id, c * CELL + (CELL / 2), r * CELL + (CELL / 2));
+                    ctx.strokeRect(x, y, CELL, CELL);
+                    if (showIds) {
+                        ctx.fillStyle = gifIdMap[id] ? 'rgba(255,255,255,0.85)' : '#fff';
+                        ctx.fillText(id, x + CELL / 2, y + CELL / 2);
+                    }
                 }
             }
             if (selectionArea) {
@@ -495,6 +527,14 @@
                 });
                 ctx.globalAlpha = 1.0;
             }
+            var mr = mousePos.r, mc = mousePos.c;
+            if (mr >= 0 && mr < parsedData.height && mc >= 0 && mc < parsedData.width) {
+                ctx.fillStyle = 'rgba(255,255,255,0.18)';
+                ctx.fillRect(0, mr * CELL, mc * CELL, CELL);
+                ctx.fillRect(mc * CELL + CELL, mr * CELL, gridCanvas.width - (mc * CELL + CELL), CELL);
+                ctx.fillRect(mc * CELL, 0, CELL, mr * CELL);
+                ctx.fillRect(mc * CELL, mr * CELL + CELL, CELL, gridCanvas.height - (mr * CELL + CELL));
+            }
         }
 
         function handleMouseDown(e) {
@@ -518,11 +558,29 @@
             } else { isPainting = true; handleAction(e); }
         }
 
+        var TOOL_HINTS = {
+            pencil: 'ctrl+z undo/ctrl+y redo',
+            bucket: 'select a vast area to fill in using the paint value you set.',
+            line: 'click a starting point then select another target point to create a line.',
+            rect: 'click a starting point then select another target point to create a rectangle. check fill to automatically fill in.',
+            oval: 'click a starting point then select another target point to create an oval. check fill to automatically fill in.',
+            select: 'click a starting point then select another target point to select the filled area. ctrl+c to copy as stamp. click select again to clear.',
+            picker: 'select a tile to set paint value as their id.'
+        };
+
         function handleMouseMove(e) {
             var rect = gridCanvas.getBoundingClientRect();
             var c = Math.floor((e.clientX - rect.left) / CELL), r = Math.floor((e.clientY - rect.top) / CELL);
             mousePos = {r, c};
-            if (isStamping || isShapeStarted) drawGrid();
+            var inBounds = r >= 0 && r < parsedData.height && c >= 0 && c < parsedData.width;
+            var pos = document.getElementById('cursor-pos');
+            if (inBounds) {
+                var id = parsedData.grid[r][c];
+                pos.innerText = 'col ' + (c + 1) + ' / ' + parsedData.width + '   row ' + (r + 1) + ' / ' + parsedData.height + '   id: ' + id;
+            } else {
+                pos.innerText = '';
+            }
+            drawGrid();
             if (currentTool === 'select' && isShapeStarted) { selectionArea = {r1: shapeStartR, c1: shapeStartC, r2: r, c2: c}; }
             else if (['line', 'rect', 'oval'].includes(currentTool) && isShapeStarted) { previewShape(shapeStartR, shapeStartC, r, c); }
             else if (isPainting && currentTool === 'pencil') handleAction(e);
@@ -551,10 +609,12 @@
             document.querySelectorAll('#tool-bar button').forEach(b => b.classList.remove('active-tool'));
             const activeBtn = document.getElementById('btn-' + t);
             if(activeBtn) activeBtn.classList.add('active-tool');
+            var hint = document.getElementById('tool-hint');
+            if (hint) hint.innerText = TOOL_HINTS[t] || '';
             if(document.getElementById('grid-modal').style.display === 'block') drawGrid(); 
         }
 
-        function closeGridModal() { document.getElementById('grid-modal').style.display = 'none'; }
+        function closeGridModal() { document.getElementById('grid-modal').style.display = 'none'; if (gifAnimInterval) { clearInterval(gifAnimInterval); gifAnimInterval = null; } }
         function applyGridChanges() { rebuildText(); parseText(); closeGridModal(); }
         function cancel() { document.getElementById("replace-box").style.display = "none"; }
         function getShapePoints(tool, r1, c1, r2, c2, isFilled) {
@@ -642,6 +702,198 @@
                 }
             });
             updateRecentIds(val);
+        }
+
+        var GIF_CHARS = (function() {
+            var s = '';
+            var ranges = [[46,126],[161,191],[46,67]];
+            ranges.forEach(function(r) { for (var i = r[0]; i <= r[1]; i++) s += String.fromCharCode(i); });
+            return s;
+        })();
+
+        function frameIndexToId(n) {
+            var len = GIF_CHARS.length;
+            if (n < len) return '.' + GIF_CHARS[n];
+            var hi = Math.floor(n / len) % len;
+            var lo = n % len;
+            return GIF_CHARS[hi] + GIF_CHARS[lo];
+        }
+
+
+        function handleGifUpload(e) {
+            var file = e.target.files[0];
+            if (!file) return;
+            e.target.value = '';
+            document.getElementById('gif-load-status').innerText = 'reading...';
+            var reader = new FileReader();
+            reader.onload = function(ev) {
+                setTimeout(function() { parseGifBytes(new Uint8Array(ev.target.result)); }, 0);
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function parseGifBytes(bytes) {
+            document.getElementById('gif-load-status').innerText = 'parsing...';
+            var gifWidth = bytes[6] | (bytes[7] << 8);
+            var gifHeight = bytes[8] | (bytes[9] << 8);
+            var gctFlag = (bytes[10] >> 7) & 1;
+            var gctSize = bytes[10] & 0x07;
+            var gct = new Uint32Array(256);
+            var pos = 13;
+            if (gctFlag) {
+                var gctCount = 1 << (gctSize + 1);
+                for (var i = 0; i < gctCount; i++) {
+                    gct[i] = (255 << 24) | (bytes[pos+2] << 16) | (bytes[pos+1] << 8) | bytes[pos];
+                    pos += 3;
+                }
+            }
+
+            var rawFrames = [];
+            var gce = null;
+
+            while (pos < bytes.length) {
+                var sentinel = bytes[pos];
+                if (sentinel === 0x3B) break;
+                if (sentinel === 0x21) {
+                    var ext = bytes[pos+1]; pos += 2;
+                    if (ext === 0xF9) {
+                        pos++;
+                        var flags = bytes[pos]; pos++;
+                        var delay = (bytes[pos] | (bytes[pos+1] << 8)) * 10; pos += 2;
+                        var tIdx = bytes[pos]; pos++;
+                        gce = { delay: delay, transIdx: (flags & 1) ? tIdx : -1 };
+                        pos++;
+                    } else {
+                        while (pos < bytes.length && bytes[pos] !== 0) { pos += bytes[pos] + 1; }
+                        pos++;
+                    }
+                } else if (sentinel === 0x2C) {
+                    pos++;
+                    var fLeft = bytes[pos] | (bytes[pos+1] << 8); pos += 2;
+                    var fTop = bytes[pos] | (bytes[pos+1] << 8); pos += 2;
+                    var fWidth = bytes[pos] | (bytes[pos+1] << 8); pos += 2;
+                    var fHeight = bytes[pos] | (bytes[pos+1] << 8); pos += 2;
+                    var packed = bytes[pos]; pos++;
+                    var lctFlag = (packed >> 7) & 1;
+                    var lctSize = packed & 0x07;
+                    var palette = gct;
+                    if (lctFlag) {
+                        palette = new Uint32Array(256);
+                        var lctCount = 1 << (lctSize + 1);
+                        for (var j = 0; j < lctCount; j++) {
+                            palette[j] = (255 << 24) | (bytes[pos+2] << 16) | (bytes[pos+1] << 8) | bytes[pos];
+                            pos += 3;
+                        }
+                    }
+                    var minCode = bytes[pos]; pos++;
+                    var totalBytes = 0;
+                    var scanPos = pos;
+                    while (scanPos < bytes.length && bytes[scanPos] !== 0) { var bs = bytes[scanPos]; scanPos += bs + 1; totalBytes += bs; }
+                    var compressed = new Uint8Array(totalBytes);
+                    var ci = 0;
+                    while (bytes[pos] !== 0) { var bsz = bytes[pos]; pos++; compressed.set(bytes.subarray(pos, pos+bsz), ci); ci += bsz; pos += bsz; }
+                    pos++;
+                    var transIdx2 = gce ? gce.transIdx : -1;
+                    var indices = lzwDecode(minCode, compressed, fWidth * fHeight);
+                    var rgba = indicesToRGBA(indices, palette, transIdx2, fWidth, fHeight, gifWidth, gifHeight, fLeft, fTop);
+                    rawFrames.push({ rgba: rgba });
+                    gce = null;
+                } else { pos++; }
+            }
+
+            buildGifIdMap(rawFrames, gifWidth, gifHeight);
+        }
+
+        function buildGifIdMap(rawFrames, gifWidth, gifHeight) {
+            var newMap = {};
+            rawFrames.forEach(function(frame, fi) {
+                var id = frameIndexToId(fi);
+                if (!newMap[id]) newMap[id] = [];
+                var offscreen = document.createElement('canvas');
+                offscreen.width = gifWidth;
+                offscreen.height = gifHeight;
+                offscreen.getContext('2d').putImageData(new ImageData(frame.rgba, gifWidth, gifHeight), 0, 0);
+                newMap[id].push(offscreen);
+            });
+            gifIdMap = newMap;
+            document.getElementById('gif-load-status').innerText = rawFrames.length + ' frames loaded';
+        }
+
+        function lzwDecode(minCodeSize, data, maxOut) {
+            var clearCode = 1 << minCodeSize;
+            var eoi = clearCode + 1;
+            var output = new Uint8Array(maxOut > 0 ? maxOut : 1048576);
+            var outLen = 0;
+            var prefixes = new Uint16Array(4096);
+            var suffixes = new Uint8Array(4096);
+            var codeSize = minCodeSize + 1;
+            var nextCode = eoi + 1;
+            var bitBuf = 0, bitCount = 0, byteIdx = 0;
+            var prevCode = -1;
+
+            function initTable() {
+                for (var i = 0; i < clearCode; i++) { prefixes[i] = 0xFFFF; suffixes[i] = i; }
+                prefixes[clearCode] = 0xFFFF; prefixes[eoi] = 0xFFFF;
+                codeSize = minCodeSize + 1; nextCode = eoi + 1; prevCode = -1;
+            }
+
+            function readCode() {
+                while (bitCount < codeSize && byteIdx < data.length) { bitBuf |= data[byteIdx++] << bitCount; bitCount += 8; }
+                var code = bitBuf & ((1 << codeSize) - 1);
+                bitBuf >>>= codeSize; bitCount -= codeSize;
+                return code;
+            }
+
+            function writeCode(code) {
+                var tmp = new Uint8Array(4096);
+                var len = 0, c = code;
+                while (c !== 0xFFFF && c < 4096) { tmp[len++] = suffixes[c]; c = prefixes[c]; if (len > 4095) break; }
+                for (var i = len - 1; i >= 0; i--) { if (outLen < output.length) output[outLen++] = tmp[i]; }
+                return len > 0 ? tmp[len-1] : 0;
+            }
+
+            initTable();
+            while (byteIdx < data.length) {
+                var code = readCode();
+                if (code === clearCode) { initTable(); continue; }
+                if (code === eoi) break;
+                if (prevCode === -1) { writeCode(code); prevCode = code; continue; }
+                var firstPixel;
+                if (code < nextCode) {
+                    firstPixel = writeCode(code);
+                } else {
+                    var tmp2 = new Uint8Array(4096);
+                    var tl = 0, c2 = prevCode;
+                    while (c2 !== 0xFFFF && tl < 4095) { tmp2[tl++] = suffixes[c2]; c2 = prefixes[c2]; }
+                    firstPixel = tmp2[tl-1];
+                    if (outLen < output.length) output[outLen++] = firstPixel;
+                }
+                if (nextCode < 4096) {
+                    prefixes[nextCode] = prevCode;
+                    suffixes[nextCode] = firstPixel;
+                    nextCode++;
+                    if (nextCode === (1 << codeSize) && codeSize < 12) codeSize++;
+                }
+                prevCode = code;
+            }
+            return output.subarray(0, outLen);
+        }
+
+        function indicesToRGBA(indices, palette, transIdx, fW, fH, gW, gH, fL, fT) {
+            var rgba = new Uint8ClampedArray(gW * gH * 4);
+            for (var r = 0; r < fH; r++) {
+                for (var c = 0; c < fW; c++) {
+                    var colorIdx = indices[r * fW + c];
+                    var dstIdx = ((fT + r) * gW + (fL + c)) * 4;
+                    if (colorIdx === transIdx) continue;
+                    var packed = palette[colorIdx];
+                    rgba[dstIdx]   = packed & 0xFF;
+                    rgba[dstIdx+1] = (packed >> 8) & 0xFF;
+                    rgba[dstIdx+2] = (packed >> 16) & 0xFF;
+                    rgba[dstIdx+3] = 255;
+                }
+            }
+            return rgba;
         }
     </script>
 </body>
